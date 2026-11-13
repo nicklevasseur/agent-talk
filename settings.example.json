@@ -1,0 +1,27 @@
+{
+  "allowed_logins": ["you@example.com"],
+  "hosts": ["your-laptop.your-tailnet.ts.net"],
+  "port": 2590,
+  "claude_path": "",
+  "user_name": "the user",
+  "keep_clips": 30,
+  "chat_quiet_seconds": 600,
+  "vocabulary": "Box weights in grams, for example 6310, 5919 and 2370. Shelf, bin, crate, pallet. Warehouse, forklift, inventory. Alex, Sam.",
+  "agents": [
+    {
+      "id": "assistant",
+      "name": "Assistant",
+      "home": "C:/Users/you/projects/assistant",
+      "voice": "am_michael",
+      "add_dirs": []
+    },
+    {
+      "id": "helper",
+      "name": "Helper",
+      "home": "C:/Users/you/projects/helper",
+      "voice": "af_heart",
+      "add_dirs": ["C:/Users/you/projects/shared-notes"],
+      "agent": "optional-agent-file-name"
+    }
+  ]
+}

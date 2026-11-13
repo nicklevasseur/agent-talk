@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B1A18">
+<title>Talk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Crushed&family=Raleway:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Layout and defaults. The look (colours, lettering, the talk button) is the second half of this sheet. The one
+     bold element is the talk button: it moves on a spring with the sound in the room (listening) or the agent's
+     voice (speaking). Everything around it stays quiet. */
+  @property --hue { syntax:'<color>'; inherits:true; initial-value:#7DB7FF; }
+  @property --orb { syntax:'<color>'; inherits:true; initial-value:#7DB7FF; }
+  :root { --bg:#0F1820; --bg2:#0A1117; --surface:#15212B; --raise:#1D2B37; --ink:#E8F0F4; --muted:#8C9CA8;
+          --line:rgba(232,240,244,.09); --rec:#FF4D3D; --hue:#7DB7FF;
+          --ease-out:cubic-bezier(.23,1,.32,1); --spring:cubic-bezier(.34,1.45,.64,1);
+          color-scheme:dark; transition:--hue 600ms var(--ease-out); }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; height:100dvh; overflow:hidden; display:grid; grid-template-rows:auto 1fr auto;
+         padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom); color:var(--ink);
+         font:16px/1.5 'Raleway', system-ui, sans-serif; -webkit-font-smoothing:antialiased;
+         background:radial-gradient(130% 60% at 50% 105%, color-mix(in oklab, var(--hue) 22%, transparent), transparent 62%),
+                    linear-gradient(var(--bg), var(--bg2)); }
+  /* The whole screen takes a wash of colour while the mic is really listening: the "talk now" cue. */
+  body::after { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:0;   /* behind the content */
+                transition:opacity 140ms var(--ease-out);
+                background:radial-gradient(90% 70% at 50% 72%, rgba(255,77,61,.34), rgba(255,77,61,.16)); }
+  body.live::after { opacity:1; }
+  button, select, input { font:inherit; color:inherit; }
+  button { cursor:pointer; }
+
+  header { padding:12px 0 2px; display:grid; gap:8px; }
+  #dock { position:relative; display:flex; gap:2px; padding:4px; overflow-x:auto; scrollbar-width:none;
+          background:var(--surface); border:1px solid var(--line); border-radius:999px; }
+  #dock::-webkit-scrollbar { display:none; }
+  /* Only the chosen agent shows its name: its chip opens on a spring, the others close to their initial. */
+  .chip { flex:none; display:flex; align-items:center; padding:5px; border:0; border-radius:999px; background:transparent;
+          font-size:14px; font-weight:500; color:var(--ink);
+          transition:background-color 260ms ease, box-shadow 260ms ease, transform 140ms var(--ease-out); }
+  .chip:active { transform:scale(.94); }
+  .chip i { flex:none; display:grid; place-items:center; width:28px; height:28px; border-radius:50%; font:600 12px/1 inherit;
+            font-style:normal; color:#0A1117; background:var(--c); box-shadow:inset 0 1px 0 rgba(255,255,255,.4); }
+  .chip span { max-width:0; overflow:hidden; white-space:nowrap; opacity:0;
+               transition:max-width 480ms var(--spring), opacity 220ms ease, margin 480ms var(--spring); }
+  .chip.on { background:var(--raise); box-shadow:inset 0 1px 0 rgba(255,255,255,.07),
+             0 0 0 1px color-mix(in oklab, var(--c) 50%, transparent), 0 8px 20px -10px var(--c); }
+  .chip.on span { max-width:120px; opacity:1; margin:0 10px 0 9px; }
+  #dock { justify-content:space-between; }
+  #dock.locked .chip:not(.on) { opacity:.35; }
+  .prefs { display:flex; justify-content:space-between; }
+  .voice { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); }
+  .voice select { appearance:none; border:0; background:none; color:var(--ink); font-size:13px; font-weight:500;
+                  padding:4px 2px; max-width:38vw; text-overflow:ellipsis; }
+
+  #log { overflow-y:auto; scrollbar-width:none; display:flex; flex-direction:column; gap:20px; padding:22px 2px 18px;
+         mask-image:linear-gradient(transparent, #000 22px, #000 calc(100% - 22px), transparent); }
+  .empty { margin-top:auto; padding:0 2px 6px; }
+  .empty h1 { margin:0; font-size:46px; line-height:1.05; font-weight:600; letter-spacing:-.035em; }
+  .empty p { margin:10px 0 0; max-width:30ch; color:var(--muted); font-size:15px; }
+  #log:has(.msg) .empty { display:none; }
+  .msg { white-space:pre-wrap; max-width:94%; font-size:17px; line-height:1.55; animation:rise 300ms var(--ease-out) both; }
+  @keyframes rise { from { opacity:0; transform:translateY(12px); filter:blur(4px); } }
+  .msg b { display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:13px; font-weight:500; color:var(--muted); }
+  .msg b::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--mhue, var(--hue));
+                   box-shadow:0 0 10px var(--mhue, var(--hue)); }
+  .me { align-self:flex-end; max-width:84%; padding:10px 15px; font-size:16px; color:#D3DEE6; background:var(--raise);
+        border:1px solid var(--line); border-radius:20px 20px 6px 20px; box-shadow:0 8px 24px -14px rgba(0,0,0,.6); }
+  .me b { font-size:12px; margin-bottom:2px; }
+  .me b::before { display:none; }
+  .err { color:#FFB8AD; }
+  .err b::before { background:var(--rec); box-shadow:0 0 10px var(--rec); }
+  .btns { display:flex; gap:8px; margin-top:12px; }
+  .replay { padding:8px 13px; font-size:13px; font-weight:500; border-radius:999px; color:var(--ink);
+            background:var(--surface); border:1px solid var(--line);
+            transition:transform 140ms var(--ease-out), background-color 160ms ease; }
+  .replay:active { transform:scale(.95); background:var(--raise); }
+
+  .console { display:grid; justify-items:center; padding-top:4px; }
+  #bars { display:flex; align-items:center; gap:3px; height:26px; opacity:0; transition:opacity 180ms var(--ease-out); }
+  body.live #bars { opacity:1; }
+  #bars i { width:3px; height:100%; border-radius:2px; background:var(--rec); transform:scaleY(.08); }
+  #ptt { --orb:var(--hue); position:relative; display:grid; place-items:center; width:168px; height:168px; margin:6px 0 2px;
+         padding:0; border:0; background:none; touch-action:none; user-select:none; -webkit-user-select:none;
+         transition:--orb 220ms var(--ease-out), opacity 200ms ease; }
+  #ptt.on { --orb:var(--rec); }
+  #ptt:disabled { opacity:.6; }
+  #ptt .halo { position:absolute; inset:-22px; border-radius:50%; opacity:.22; will-change:transform, opacity;
+               background:radial-gradient(circle, color-mix(in oklab, var(--orb) 60%, transparent), transparent 68%); }
+  #ptt .core { position:relative; width:100%; height:100%; display:grid; place-items:center; overflow:hidden;
+               border-radius:50%; will-change:transform;
+               background:radial-gradient(circle at 32% 24%, color-mix(in oklab, var(--orb) 30%, white) 0%,
+                          var(--orb) 40%, color-mix(in oklab, var(--orb) 42%, #050A0F) 100%);
+               box-shadow:inset 0 2px 1px rgba(255,255,255,.5), inset 0 -24px 44px rgba(0,0,0,.42),
+                          0 30px 56px -20px color-mix(in oklab, var(--orb) 75%, transparent), 0 3px 0 rgba(0,0,0,.35); }
+  #ptt .sheen { position:absolute; inset:-35%; opacity:0; transition:opacity 300ms ease;
+                background:conic-gradient(transparent 0 62%, rgba(255,255,255,.42) 76%, transparent 88%); }
+  body.thinking #ptt .sheen { opacity:1; animation:spin 1.5s linear infinite; }
+  @keyframes spin { to { transform:rotate(1turn); } }
+  #ptt .label { position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; font-size:17px;
+                font-weight:600; letter-spacing:-.01em; color:rgba(6,12,18,.84); text-shadow:0 1px 0 rgba(255,255,255,.28); }
+  #status { min-height:1.4em; margin:2px 0 12px; font-size:14px; color:var(--muted); text-align:center;
+            font-variant-numeric:tabular-nums; }
+
+  .row { display:grid; grid-template-columns:repeat(3, 1fr); gap:4px; padding:4px; margin-bottom:10px;
+         background:var(--surface); border:1px solid var(--line); border-radius:18px; }
+  .row button { padding:13px 8px; font-size:15px; font-weight:500; border:0; border-radius:14px; background:transparent;
+                transition:transform 140ms var(--ease-out), background-color 160ms ease, color 160ms ease; }
+  .row button:active { transform:scale(.95); background:var(--raise); }
+  button.small.on { color:#fff; background:var(--rec); box-shadow:0 8px 22px -10px var(--rec); }
+  form { display:flex; gap:8px; padding-bottom:12px; }
+  input { flex:1; min-width:0; padding:12px 16px; font-size:16px; outline:none; background:var(--surface);
+          border:1px solid var(--line); border-radius:999px; transition:border-color 160ms ease; }
+  input::placeholder { color:var(--muted); }
+  input:focus { border-color:color-mix(in oklab, var(--hue) 65%, transparent); }
+  form button { padding:0 18px; font-size:15px; font-weight:600; border:0; border-radius:999px; color:#0A1117;
+                background:var(--hue); transition:transform 140ms var(--ease-out); }
+  form button:active { transform:scale(.95); }
+  :focus-visible { outline:2px solid var(--hue); outline-offset:2px; }
+  /* The look: warm near-black, cream lettering, bronze keys, brass and amber accents; tall condensed headings
+     (Crushed) over Raleway text. The talk button is an intercom microphone: a perforated brass plate in a milled
+     rim, with a lamp ring that glows in the agent's colour and turns amber for "talk now". It lies tilted, tips
+     under a press, squares up for "talk now", and rolls on its rim while the agent thinks. The keys under it are
+     raised and lit from above, so each reads as a button before it is read. */
+  :root { --bg:#1B1A18; --bg2:#121110; --surface:#25221D; --raise:#4A4234; --ink:#F4EEE3;
+                             --muted:#B9A88D; --line:rgba(214,194,164,.16); --rec:#FFC933; --brass:#C9A961; }
+  body { font-family:'Raleway', system-ui, sans-serif; font-variant-numeric:lining-nums;
+        background:radial-gradient(120% 48% at 50% 108%, rgba(201,169,97,.13), transparent 60%),
+                   radial-gradient(90% 38% at 50% 0%, color-mix(in oklab, var(--hue) 13%, transparent), transparent 70%),
+                   linear-gradient(#22201D, #141312); }
+  body::after { background:radial-gradient(90% 70% at 50% 70%, rgba(255,201,51,.3), rgba(255,201,51,.13)); }
+  .empty h1 { font:400 76px/.9 'Crushed', 'Raleway', sans-serif; letter-spacing:.01em;
+        text-transform:uppercase;
+        text-shadow:0 1px 0 #D9C7A6, 0 2px 0 #BFA982, 0 3px 0 #A48C63, 0 4px 0 #8A734D, 0 5px 0 #6B5839,
+                    0 6px 0 #4A4234, 0 14px 22px rgba(0,0,0,.55); }
+  .chip i { font-family:'Crushed', sans-serif; font-weight:400; font-size:15px; color:#1B1A18; }
+  .msg b, .row button, form button, .replay {
+        font-family:'Crushed', 'Raleway', sans-serif; font-weight:400; letter-spacing:.05em; text-transform:uppercase; }
+  .me { color:#F4EEE3; background:linear-gradient(#52493A, #453D30); border-color:rgba(255,255,255,.1); }
+  /* Keys: each control is its own raised key, cream on warm bronze, so it reads as a button before it is read. */
+  .row { gap:8px; padding:0; background:none; border:0; margin-bottom:12px; }
+  .row button, .replay {
+        color:var(--ink); background:linear-gradient(#574D3C, #453D30); border:1px solid rgba(255,255,255,.1);
+        border-bottom-color:rgba(0,0,0,.5);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.16), 0 3px 0 #1F1C17, 0 10px 16px -8px rgba(0,0,0,.7);
+        transition:transform 110ms var(--ease-out), box-shadow 110ms var(--ease-out), background-color 160ms ease; }
+  .row button { padding:14px 6px 12px; font-size:18px; border-radius:14px; }
+  .replay { padding:8px 14px 7px; font-size:15px; }
+  .row button:active, .replay:active {
+        transform:translateY(3px); background:linear-gradient(#4A4234, #3D362B);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.1), 0 0 0 #1F1C17, 0 4px 8px -6px rgba(0,0,0,.7); }
+  button.small.on { color:#1B1A18; background:linear-gradient(#FFD75E, #F0B81E);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.5), 0 3px 0 #8A6A12, 0 10px 20px -8px var(--rec); }
+  input { background:#141311; border-color:rgba(214,194,164,.22);
+        box-shadow:inset 0 2px 5px rgba(0,0,0,.55); }
+  input:focus { border-color:var(--brass); }
+  form button { font-size:18px; padding:2px 20px 0; color:#1B1A18;
+        background:linear-gradient(#E3C47C, #C29F52);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.5), 0 3px 0 #6E5828, 0 10px 16px -8px rgba(0,0,0,.7);
+        transition:transform 110ms var(--ease-out), box-shadow 110ms var(--ease-out); }
+  form { padding-bottom:15px; }
+  form button:active { transform:translateY(3px);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.4), 0 0 0 #6E5828, 0 4px 8px -6px rgba(0,0,0,.7); }
+  :focus-visible { outline-color:var(--brass); }
+  /* The microphone. */
+  #ptt { width:216px; height:238px; place-items:start center; margin:2px 0 0; }
+  /* Behind the button: thin spokes of light in one colour with dark between them. Ivory at rest, amber for "talk
+     now"; they turn slowly and flare with the sound. */
+  #ptt { --ray:#F4EEE3; }
+  #ptt.on { --ray:var(--rec); }
+  #ptt .halo { inset:-34px -25px 10px; opacity:.34;
+        background:repeating-conic-gradient(from 0deg, color-mix(in oklab, var(--ray) 70%, transparent) 0 3.5deg,
+                   transparent 3.5deg 12deg);
+        -webkit-mask:radial-gradient(circle, #000 20%, transparent 68%); mask:radial-gradient(circle, #000 20%, transparent 68%); }
+  #ptt .core { width:192px; height:192px; margin-top:4px; overflow:visible;
+        background:repeating-conic-gradient(from 0deg, #8E7440 0 1.5deg, #E2C685 1.5deg 3deg);          /* milled rim */
+        box-shadow:inset 0 0 0 1px rgba(0,0,0,.45), 0 1px 0 #9A7F47, 0 2px 0 #8E7440, 0 3px 0 #826A3A, 0 4px 0 #765F33,
+                   0 5px 0 #6A552D, 0 6px 0 #5E4B27, 0 7px 0 #4F3F20, 0 8px 0 #3F3219,
+                   0 26px 30px -10px rgba(0,0,0,.8), 0 0 46px -8px color-mix(in oklab, var(--orb) 55%, transparent); }
+  #ptt .core::before { content:''; position:absolute; inset:9px; border-radius:50%;           /* the plate */
+        background:radial-gradient(circle at 34% 20%, rgba(255,255,255,.34), transparent 48%),
+                   radial-gradient(circle, #0E0D0B 0 2.4px, transparent 2.9px) 0 0 / 10px 10px,
+                   radial-gradient(circle, #0E0D0B 0 2.4px, transparent 2.9px) 5px 5px / 10px 10px,
+                   linear-gradient(160deg, #B79C63, #6A5733);
+        box-shadow:inset 0 4px 8px rgba(0,0,0,.65), inset 0 -2px 3px rgba(255,255,255,.18), 0 0 0 1.5px #3F3219,
+                   0 0 0 4px #D8BC7C, 0 0 0 5px rgba(0,0,0,.35); }
+  #ptt .core::after { content:''; position:absolute; inset:15px; border-radius:50%;           /* the lamp */
+        border:5px solid var(--orb); transition:border-color 220ms var(--ease-out), box-shadow 220ms var(--ease-out);
+        box-shadow:0 0 16px var(--orb), inset 0 0 12px color-mix(in oklab, var(--orb) 70%, transparent),
+                   0 0 0 1.5px rgba(0,0,0,.55), inset 0 0 0 1.5px rgba(0,0,0,.55); }
+  #ptt .sheen { inset:9px; border-radius:50%; z-index:1; mix-blend-mode:soft-light;
+        background:conic-gradient(transparent 0 58%, rgba(255,255,255,.95) 74%, transparent 90%); }
+  #ptt .label { inset:auto 0 0; place-items:end center; font:400 19px/1 'Crushed', 'Raleway', sans-serif;
+        letter-spacing:.06em; text-transform:uppercase; color:var(--ink);
+        text-shadow:0 2px 0 #4A4234, 0 6px 14px rgba(0,0,0,.6); }
+  #ptt.on .label { color:var(--rec); }
+  @media (prefers-reduced-motion: reduce) {
+    .msg { animation:none; } body.thinking #ptt .sheen { animation:none; } .chip span { transition:none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <nav id="dock" aria-label="Who to talk to"></nav>
+  <div class="prefs">
+    <label class="voice">Voice <select id="voice" aria-label="Voice"></select></label>
+  </div>
+  <select id="agent" hidden></select>
+</header>
+<div id="log" aria-live="polite"><div class="empty"><h1 id="who"></h1><p>Hold to talk, or tap Hands-free to dictate with your hands busy.</p></div></div>
+<section class="console">
+  <div id="bars" aria-hidden="true"></div>
+  <button id="ptt" aria-label="Hold to talk"><span class="halo"></span><span class="core"><span class="sheen"></span></span><span class="label">Hold to talk</span></button>
+  <div id="status"></div>
+</section>
+<div class="row">
+  <button class="small" type="button" id="free">Hands-free</button>
+  <button class="small" type="button" id="stop">Hush</button>
+  <button class="small" type="button" id="new">New</button>
+</div>
+<form id="typed">
+  <input id="text" placeholder="Or type…" autocomplete="off">
+  <button>Send</button>
+</form>
+<script>
+const $ = id => document.getElementById(id);
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+                set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+let names = {}, defaults = {}, laptop = [], phone = [], stream = null, rec = null, chunks = [], busy = false;
+
+function status(t) { $('status').textContent = t; }
+const pttLabel = t => { $('ptt').querySelector('.label').textContent = t; $('ptt').setAttribute('aria-label', t); };
+// Each agent has its own colour: the lamp ring, the dock and the glow take it on. Colours go by the agent's place in
+// the list, not by name, so any team gets them (sky, moss, clay, plum, teal, sand).
+const HUES = ['#5FA3DD', '#A3B95C', '#D9794C', '#B98BC9', '#4FB5A5', '#D6C2A4'];
+const cue = () => 'yellow';                                                // the colour that means "talk now"
+const hueOf = a => HUES[Math.max(0, [...$('agent').options].findIndex(o => o.value === a)) % HUES.length];
+function add(who, text, cls = '') {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.style.setProperty('--mhue', hueOf($('agent').value));
+  d.innerHTML = '<b></b>'; d.firstChild.textContent = who;
+  const t = document.createTextNode(text); d.append(t);
+  $('log').append(d); d.scrollIntoView({ block: 'end' });
+  return t;
+}
+// A reply bubble that fills in as the agent writes, with Replay and Pause buttons. Returns a function that redraws it.
+function replyBubble(who, s) {
+  const t = add(who, ''), d = t.parentNode, row = document.createElement('div'), b = document.createElement('button'),
+        p = document.createElement('button');
+  b.className = 'replay'; b.textContent = '▶ Replay'; b.onclick = () => replay(s);
+  p.className = 'replay pause'; p.textContent = paused ? '▶ Resume' : '⏸ Pause'; p.onclick = () => setPaused(!paused);
+  row.className = 'btns'; row.append(b, p); d.append(row);
+  return () => { t.data = s.text; d.scrollIntoView({ block: 'end' }); };
+}
+
+// Voices: laptop voices (Kokoro, made on the laptop) and the phone's own. Each agent remembers its pick on this phone.
+async function loadVoices() {
+  if (!laptop.length) laptop = await fetch('/voices').then(r => r.json()).catch(() => []);
+  phone = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en'));
+  const sel = $('voice'); sel.innerHTML = '';
+  laptop.forEach(v => sel.add(new Option(v.label, 'k:' + v.id)));
+  phone.forEach(v => sel.add(new Option('Phone: ' + v.name, 'p:' + v.name)));
+  pickVoice();
+}
+function pickVoice() {
+  const a = $('agent').value, has = v => [...$('voice').options].some(o => o.value === v);
+  const want = [store.get('voice:' + a), 'k:' + defaults[a]].find(v => v && has(v));
+  if (want) $('voice').value = want;
+}
+speechSynthesis.onvoiceschanged = loadVoices;
+$('voice').onchange = () => store.set('voice:' + $('agent').value, $('voice').value);
+$('agent').onchange = () => { store.set('agent', $('agent').value); pickVoice(); showAgent(); };
+
+// The agent dock: one chip per agent; the chosen one opens on a spring to show its name.
+function buildDock() {
+  for (const o of $('agent').options) {
+    const c = document.createElement('button');
+    c.type = 'button'; c.className = 'chip'; c.dataset.id = o.value;
+    c.style.setProperty('--c', hueOf(o.value));
+    c.innerHTML = '<i></i><span></span>';
+    c.firstChild.textContent = o.text[0]; c.lastChild.textContent = o.text;
+    c.onclick = () => {
+      if ($('agent').disabled || $('agent').value === o.value) return;
+      $('agent').value = o.value; $('agent').onchange();
+    };
+    $('dock').append(c);
+  }
+  showAgent();
+}
+function showAgent() {
+  const a = $('agent').value;
+  document.documentElement.style.setProperty('--hue', hueOf(a));
+  $('dock').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.id === a));
+  $('dock').classList.toggle('locked', $('agent').disabled);
+  $('who').textContent = names[a] || '';
+  $('dock').querySelectorAll('.chip').forEach(c => c.style.setProperty('--c', hueOf(c.dataset.id)));
+}
+
+// Playback. Laptop speech goes through Web Audio with a compressor and extra gain, so it plays louder than the phone's
+// own voice.
+let ctx = null, out = null, gen = 0, at = 0, sources = [];
+function unlock() {                                      // phones only allow sound after a tap: call on every tap
+  keepAwake();
+  if (!ctx) {
+    ctx = new AudioContext();
+    const comp = ctx.createDynamicsCompressor(), gain = ctx.createGain();
+    gain.gain.value = 1.8; comp.connect(gain).connect(ctx.destination); out = comp;
+    outAn = ctx.createAnalyser(); outAn.fftSize = 1024; gain.connect(outAn);   // the agent's voice moves the orb
+  }
+  if (ctx.state === 'suspended' && !paused) ctx.resume();
+}
+
+// The talk button has weight: it follows the sound level (the mic while listening, the agent's voice while speaking) through
+// a spring, so it swells fast on a loud syllable and settles back with momentum; a press squashes it the same way.
+// The bars above it are the last two seconds of the mic, shown while the mic is live.
+let micAn = null, outAn = null;
+const lvlBuf = new Float32Array(1024), reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function rms(an) {
+  if (!an) return 0;
+  an.getFloatTimeDomainData(lvlBuf);
+  let sum = 0; for (const x of lvlBuf) sum += x * x;
+  return Math.sqrt(sum / lvlBuf.length);
+}
+function watchMic(s) {
+  if (!ctx) return;
+  const src = ctx.createMediaStreamSource(s);
+  micAn = ctx.createAnalyser(); micAn.fftSize = 1024; micAn.src = src; src.connect(micAn);
+}
+function unwatchMic() { try { micAn?.src.disconnect(); } catch {} micAn = null; }
+const spring = (k, c) => ({ x: 0, v: 0, step(target, dt) {
+  if (reduceMotion) return (this.x = target);
+  this.v += ((target - this.x) * k - this.v * c) * dt; this.x += this.v * dt; return this.x;
+} });
+const level = spring(240, 20), press = spring(520, 24), lift = spring(200, 18), roll = spring(90, 11);
+let pressTarget = 0, lastFrame = performance.now(), lastBar = 0, raysAngle = 0, rollAngle = 0;
+const barHist = new Array(28).fill(0);
+for (let i = 0; i < barHist.length; i++) $('bars').append(document.createElement('i'));
+function frame(now) {
+  const dt = Math.min(0.05, (now - lastFrame) / 1000); lastFrame = now;
+  const heard = Math.min(1, Math.max(rms(micAn) * 6, rms(outAn) * 3.5));
+  const l = Math.max(0, level.step(heard, dt)), p = press.step(pressTarget, dt);
+  const orb = $('ptt');
+  const halo = orb.querySelector('.halo'), lv = lift.step(document.body.classList.contains('live') ? 1 : 0, dt);
+  {
+    // The microphone lies tilted back. A press tips it further and sinks it, "talk now" stands it square to the screen,
+    // and while the agent thinks it rolls on its rim the way a spun coin does before it settles.
+    const th = roll.step(document.body.classList.contains('thinking') ? 1 : 0, dt);
+    if (!reduceMotion) rollAngle = (rollAngle + dt * 5.2) % (2 * Math.PI);
+    const rx = 16 * (1 - lv) + p * 16 + th * 13 * Math.sin(rollAngle), ry = -9 * (1 - lv) + th * 17 * Math.cos(rollAngle);
+    orb.querySelector('.core').style.transform = `perspective(620px) translateY(${(p * 5 - lv * 4).toFixed(2)}px) ` +
+      `rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) scale(${((1 - p * 0.04) * (1 + l * 0.06 + lv * 0.04)).toFixed(4)})`;
+  }
+  {                                                      // the spokes turn, faster with the sound
+    if (!reduceMotion) raysAngle = (raysAngle + dt * (3 + l * 45)) % 360;
+    halo.style.transform = `scale(${1 + l * 0.35 + lv * 0.12}) rotate(${raysAngle}deg)`;
+    halo.style.opacity = Math.min(1, 0.32 + l * 0.6 + lv * 0.3).toFixed(3);
+  }
+  if (micAn && now - lastBar > 70) {
+    lastBar = now; barHist.shift(); barHist.push(heard);
+    $('bars').childNodes.forEach((b, i) => { b.style.transform = `scaleY(${Math.max(0.08, barHist[i])})`; });
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+$('ptt').addEventListener('pointerdown', () => { pressTarget = 1; });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('ptt').addEventListener(ev, () => { pressTarget = 0; }));
+// Pause and Resume in each reply bubble, next to Replay. Freezing the audio clock holds every queued sentence; pieces still arriving queue behind them.
+let paused = false;
+function setPaused(v) {
+  paused = v;
+  if (ctx) v ? ctx.suspend() : ctx.resume();
+  v ? speechSynthesis.pause() : speechSynthesis.resume();
+  document.querySelectorAll('.pause').forEach(b => b.textContent = v ? '▶ Resume' : '⏸ Pause');
+}
+function hush() {
+  if (paused) setPaused(false);
+  gen++; at = 0; speechSynthesis.cancel();
+  sources.forEach(s => { try { s.stop(); } catch {} }); sources = [];
+}
+function play(buf, g) {
+  if (g !== gen) return;
+  const s = ctx.createBufferSource(); s.buffer = buf; s.connect(out);
+  const t = Math.max(ctx.currentTime + 0.05, at); s.start(t); at = t + buf.duration;
+  sources.push(s); s.onended = () => { sources = sources.filter(x => x !== s); };
+}
+function clean(p) { return p.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/[*_#`|>]/g, '').trim(); }
+
+// A reply being spoken. Text arrives a few words at a time; each sentence goes to the voice as soon as it is
+// complete, so speech starts while the agent is still writing.
+function speaker(voice) {
+  hush();
+  return { voice, g: gen, text: '', rest: '', queue: [], bufs: [], n: 0, last: 0, done: false, busy: false, failed: false };
+}
+function feed(s, t, last = false) {
+  s.text += t; s.rest += t;
+  // Split after . ! ? only when a space follows, so 137.6 stays one number. The last part may be unfinished.
+  const parts = s.rest.split(/(?<=[.!?])\s+|\n+/);
+  s.rest = last ? '' : parts.pop();
+  s.queue.push(...parts.map(clean).filter(Boolean));
+  if (last) s.done = true;
+  pump(s);
+}
+function more(s, ms) {                                  // wait until a second sentence is in, the reply ends, or ms pass
+  const t0 = performance.now();
+  return new Promise(done => {
+    const tick = () => (s.queue.length > 1 || s.done || performance.now() - t0 > ms) ? done() : setTimeout(tick, 50);
+    tick();
+  });
+}
+async function pump(s) {
+  if (s.busy || s.failed) return;
+  s.busy = true;
+  try {
+    while (s.queue.length && s.g === gen) {
+      // The laptop makes speech at about 0.45 s per second of it (measured on one laptop), so each piece is at most 1.6 times the
+      // one before: it is ready before the one playing ends. A short first sentence followed by a big piece left a
+      // pause after the first words. A very short opener waits a moment for the next sentence.
+      const laptop = s.voice.startsWith('k:');
+      if (laptop && !s.n && s.queue[0].length < 35) await more(s, 700);
+      if (s.g !== gen) break;
+      const limit = s.n ? Math.max(40, Math.round(s.last * 1.6)) : 80;
+      let p = s.queue.shift();
+      while (s.queue.length && (p + ' ' + s.queue[0]).length <= limit && (s.n || p.length < 35)) p += ' ' + s.queue.shift();
+      if (laptop && p.length > limit) {                  // one long sentence: break it at a comma before the limit
+        const cut = p.slice(0, limit).search(/[,;:]\s[^,;:]*$/);
+        if (cut > 15) { s.queue.unshift(p.slice(cut + 2)); p = p.slice(0, cut + 1); }
+      }
+      s.n++; s.last = p.length;
+      if (s.voice.startsWith('p:')) {
+        const u = new SpeechSynthesisUtterance(p), v = phone.find(x => x.name === s.voice.slice(2));
+        if (v) u.voice = v;
+        u.volume = 1; speechSynthesis.speak(u); continue;
+      }
+      unlock();
+      const r = await fetch('/say?voice=' + s.voice.slice(2), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: p });
+      if (!r.ok) throw new Error('voice ' + r.status);
+      const b = await ctx.decodeAudioData(await r.arrayBuffer());
+      s.bufs.push(b); play(b, s.g);
+    }
+  } catch (e) {
+    s.failed = true;
+    if (s.g === gen) status('The laptop voice failed (' + e.message + '). Pick a phone voice for now.');
+  } finally { s.busy = false; }
+}
+function replay(s) {
+  unlock();
+  // A reply spoken in full in a laptop voice replays from the audio already made; anything else is spoken again.
+  if (s.voice.startsWith('k:') && s.done && !s.busy && !s.failed && !s.queue.length && s.bufs.length) {
+    hush(); s.bufs.forEach(b => play(b, gen)); return;
+  }
+  feed(speaker(s.voice), s.text, true);
+}
+
+async function send(path, body, type, extra = '') {
+  const a = $('agent').value, who = names[a];
+  let s = null, draw = null, since = '';
+  busy = true; $('ptt').disabled = true;
+  document.body.classList.add('thinking');               // a sheen turns on the orb until the first words arrive
+  status(path === '/text' ? who + ' is thinking…' : 'Writing down what you said…');
+  if (path === '/text') add('You', body, 'me');
+  try {
+    const r = await fetch(path + '?agent=' + a + extra, { method: 'POST', headers: { 'Content-Type': type }, body });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 200) || r.status);
+    // The answer streams in as lines of JSON: heard, then text pieces, then done (or note / error).
+    const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+    let held = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      held += value;
+      const lines = held.split('\n'); held = lines.pop();
+      for (const line of lines.filter(Boolean)) {
+        const ev = JSON.parse(line);
+        if (ev.error) throw Object.assign(new Error(ev.error), { fromServer: true });
+        if (ev.note) { status(ev.note); return; }
+        if (ev.heard !== undefined) {
+          since = ev.at || since;
+          if (path === '/talk') add('You', ev.heard, 'me');
+          if (path === '/dictate' && dictNode) dictNode.data = ev.heard;
+          status(who + ' is thinking…');
+        }
+        if (ev.text || ev.done) {
+          document.body.classList.remove('thinking');
+          if (!s) { s = speaker($('voice').value); draw = replyBubble(who, s); status(who + ' is answering…'); }
+          if (ev.done) { feed(s, s.text ? '' : ev.reply, true); status(''); }
+          else feed(s, ev.text);
+          draw();
+        }
+      }
+    }
+    if (!s || !s.done) throw new Error('The connection dropped before ' + who + ' finished. The answer still ' +
+                                       'finishes on the laptop: ask to hear it again.');
+  } catch (e) {
+    if (since && !e.fromServer && !(s && s.done)) recover(a, who, since);   // the turn goes on: fetch its answer
+    else { add('Problem', String(e.message || e), 'err'); status('That didn’t go through. Try again.'); }
+  } finally { busy = false; $('ptt').disabled = false; document.body.classList.remove('thinking'); }
+}
+// When the connection drops mid-answer (the phone locked, the network blinked), the agent still finishes on the laptop.
+// The page asks for that answer every 5 s for up to 15 minutes and shows and speaks it when it's in.
+async function recover(a, who, since) {
+  status('The connection dropped. ' + who + ' is still working on it; the answer will show up here.');
+  for (let i = 0; i < 180; i++) {
+    await new Promise(r => setTimeout(r, 5000));
+    const j = await fetch(`/last?agent=${a}&since=${encodeURIComponent(since)}`).then(r => r.json()).catch(() => null);
+    if (!j || j.pending) continue;
+    if (j.error) { add('Problem', j.error, 'err'); status('That didn’t go through. Try again.'); return; }
+    const s = speaker($('voice').value), draw = replyBubble(who, s);
+    feed(s, j.reply, true); draw(); status('');
+    return;
+  }
+  status('No answer came back. Ask ' + who + ' again.');
+}
+
+// The mic is opened for each recording and released right after: while a page holds the mic, Android plays its
+// speech at phone-call volume, which made replies very quiet. After the mic opens, a Pixel phone gives a quarter second
+// of sound, then about 2.5 s of pure silence (exact zeros) while it switches audio over, then real sound. So the
+// screen changes colour only after sound has come through without a break for 0.6 s; words said
+// before that are lost. (It also tries to buzz; on that phone the buzz never came.)
+let holding = false, micWait = 0, liveWait = 0;
+// That switch is to Bluetooth (earbuds, car) when a device is connected. Use the phone's own mic when the phone lists one; Chrome on Android calls it "Speakerphone".
+let phoneMic, micList = '';                              // phoneMic: undefined until looked up, null if none listed
+async function findPhoneMic() {
+  if (phoneMic !== undefined) return;
+  const ins = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+  if (!ins.some(d => d.label)) return;                   // names show only once the mic is allowed: look again next time
+  micList = ins.map(d => d.label).join(' | ');
+  phoneMic = ins.find(d => /speakerphone|built-?in|bottom/i.test(d.label) && !/bluetooth|headset/i.test(d.label)) || null;
+}
+function whenLive(stream) {
+  return new Promise(done => {
+    const src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser(), buf = new Float32Array(an.fftSize);
+    src.connect(an);
+    const t0 = performance.now();
+    let since = null;                                    // when the current unbroken stretch of sound began
+    const tick = () => {
+      const now = performance.now();
+      an.getFloatTimeDomainData(buf);
+      since = buf.some(x => x !== 0) ? (since ?? now) : null;
+      if ((since !== null && now - since >= 600) || now - t0 > 8000) { src.disconnect(); done(); }
+      else setTimeout(tick, 30);
+    };
+    tick();
+  });
+}
+async function openMic() {
+  // Raw sound for Whisper: the phone's call-style echo and noise filters can smear words.
+  const raw = { echoCancellation: false, noiseSuppression: false, autoGainControl: true };
+  await findPhoneMic();
+  try { return await navigator.mediaDevices.getUserMedia({ audio: phoneMic ? { ...raw, deviceId: { exact: phoneMic.deviceId } } : raw }); }
+  catch (err) { if (!phoneMic) throw err; phoneMic = null; return await navigator.mediaDevices.getUserMedia({ audio: raw }); }
+}
+const recType = () => ['audio/webm;codecs=opus', 'audio/mp4'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+async function start(e) {
+  e.preventDefault();
+  if (dict) return finishFree();                         // in hands-free, the big button sends
+  if (busy || rec) return;
+  holding = true; unlock(); hush();
+  pttLabel('Wait…'); status('Wait for ' + cue() + ', then talk.');
+  const t0 = performance.now();
+  try { stream = await openMic(); }
+  catch { pttLabel('Hold to talk'); status('The page needs the microphone. Allow it and try again.'); return; }
+  if (!holding) { stream.getTracks().forEach(t => t.stop()); return; }   // let go before the mic opened
+  watchMic(stream);
+  micWait = Math.round(performance.now() - t0);
+  const type = recType();
+  rec = new MediaRecorder(stream, type ? { mimeType: type } : {});
+  chunks = [];
+  rec.ondataavailable = ev => chunks.push(ev.data);
+  rec.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    unwatchMic();
+    const blob = new Blob(chunks, { type: rec.mimeType }); rec = null;
+    const used = stream.getAudioTracks()[0]?.label || '';
+    if (blob.size > 2000) send('/talk', blob, blob.type, '&mic=' + micWait + '&live=' + liveWait +
+                               '&dev=' + encodeURIComponent(used) + '&mics=' + encodeURIComponent(micList));
+    else status('Too short. Wait for ' + cue() + ', then talk.');
+  };
+  rec.start();                                           // silence before the buzz is harmless: Whisper skips it
+  await whenLive(stream);
+  liveWait = Math.round(performance.now() - t0);
+  if (!holding) return;
+  if (navigator.vibrate) navigator.vibrate(80);
+  document.body.classList.add('live');
+  $('ptt').classList.add('on'); pttLabel('Talk now'); status('Let go when you’re done.');
+}
+function stop(e) {
+  e.preventDefault();
+  if (dict) return;
+  holding = false;
+  document.body.classList.remove('live');
+  $('ptt').classList.remove('on'); pttLabel('Hold to talk');
+  const r = rec;
+  if (r) setTimeout(() => { if (r.state === 'recording') r.stop(); }, 400);   // keeps the last word if you let go early
+}
+// Hands-free: hold the mic open for minutes while your hands are busy. One tap opens the mic until Send. Every 10 s the new sound goes to the
+// laptop, which writes it down as you talk, so minutes of dictation are safe there and the end is quick.
+let dict = null, dictNode = null;
+// The screen stays on while this page is open: a locked phone stops a hands-free recording and cuts off an answer. Phones drop the lock whenever the
+// page is hidden, so it is asked for again each time the page comes back, and on every tap.
+let wake = null;
+async function keepAwake() {
+  if (document.visibilityState !== 'visible' || (wake && !wake.released)) return;
+  try { wake = await navigator.wakeLock.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', keepAwake);
+// Leaving the page (another app, the lock screen) sends the voice talk to the agents' app chats at once, instead of
+// after the quiet time.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') navigator.sendBeacon('/tochat?agent=all');
+});
+keepAwake();
+const clock = ms => Math.floor(ms / 60000) + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0');
+async function startFree() {
+  if (busy || rec || dict) return;
+  unlock(); hush();
+  $('free').textContent = 'Wait…'; status('Wait for ' + cue() + ', then talk. Tap Send when you’re done.');
+  let s;
+  try { s = await openMic(); }
+  catch { $('free').textContent = 'Hands-free'; status('The page needs the microphone. Allow it and try again.'); return; }
+  const type = recType(), a = $('agent').value;
+  const d = dict = { a, id: Date.now().toString(36), seq: 0, chain: Promise.resolve(), stream: s, t0: 0,
+                     node: add('You (hands-free)', '', 'me') };
+  $('agent').disabled = true; showAgent(); watchMic(s);
+  d.rec = new MediaRecorder(s, type ? { mimeType: type } : {});
+  d.rec.ondataavailable = ev => { if (ev.data.size) d.chain = d.chain.then(() => sendPiece(d, ev.data)); };
+  d.rec.start(10000);
+  await whenLive(s);
+  if (dict !== d) return;
+  document.body.classList.add('live');
+  $('free').textContent = 'Send'; $('free').classList.add('on');
+  $('ptt').classList.add('on'); pttLabel('Tap to send');
+  d.t0 = performance.now();
+  $('stop').textContent = 'Pause';
+  const tick = () => { if (!d.pausedAt) status('Listening ' + clock(performance.now() - d.t0) + (d.lost ? '. Some sound didn’t reach the laptop.' : '. Tap Send when you’re done.')); };
+  tick(); d.timer = setInterval(tick, 1000);
+}
+// Pause a long dictation and pick it up again. The recorder stops taking sound but the dictation
+// stays open, so Resume carries on in the same one; Send still works while paused. During hands-free, Hush is Pause.
+function pauseFree() {
+  const d = dict; if (!d || !d.t0) return;
+  if (!d.pausedAt) {
+    d.rec.pause(); d.pausedAt = performance.now();
+    document.body.classList.remove('live'); $('stop').textContent = 'Resume'; $('stop').classList.add('on');
+    status('Paused at ' + clock(d.pausedAt - d.t0) + '. Tap Resume to go on, or Send.');
+  } else {
+    d.t0 += performance.now() - d.pausedAt; d.pausedAt = 0; d.rec.resume();
+    document.body.classList.add('live'); $('stop').textContent = 'Pause'; $('stop').classList.remove('on');
+  }
+}
+async function sendPiece(d, blob) {                      // pieces go one at a time, in order; a failed one is retried
+  for (let tries = 0; ; tries++) {
+    try {
+      const r = await fetch(`/dictate?agent=${d.a}&id=${d.id}&seq=${d.seq}`, { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      const j = await r.json();
+      d.seq++; d.node.data = j.total; d.node.parentNode.scrollIntoView({ block: 'end' });
+      return;
+    } catch (e) {
+      if (tries >= 5) { d.lost = true; return; }
+      await new Promise(r => setTimeout(r, 2000 * (tries + 1)));
+    }
+  }
+}
+async function finishFree() {
+  const d = dict; if (!d) return;
+  dict = null; clearInterval(d.timer);
+  document.body.classList.remove('live');
+  $('stop').textContent = 'Hush'; $('stop').classList.remove('on');
+  $('free').classList.remove('on'); $('free').textContent = 'Hands-free';
+  $('ptt').classList.remove('on'); pttLabel('Hold to talk');
+  status('Writing down the last of it…');
+  await new Promise(res => { d.rec.onstop = res; d.rec.stop(); });   // the last piece is queued before onstop
+  d.stream.getTracks().forEach(t => t.stop()); unwatchMic();
+  await d.chain;
+  $('agent').disabled = false; showAgent();
+  if (!d.seq) { d.node.parentNode.remove(); status('Nothing was recorded. Try again.'); return; }
+  dictNode = d.node;
+  send('/dictate', '', 'text/plain', `&id=${d.id}&final=1`);
+}
+$('free').onclick = () => dict ? finishFree() : startFree();
+
+// The laptop sends each voice conversation to the agent's chat in the Claude app by itself after the quiet time
+// (settings.json "chat_quiet_seconds"). New sends what's waiting first.
+async function toChat() {
+  const a = $('agent').value;
+  status('Sending to ' + names[a] + '’s chat…');
+  const j = await fetch('/tochat?agent=' + a, { method: 'POST' }).then(r => r.json()).catch(e => ({ note: 'Couldn’t send it: ' + e.message }));
+  status(j.note);
+}
+
+$('ptt').addEventListener('pointerdown', start);
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('ptt').addEventListener(ev, stop));
+$('ptt').addEventListener('contextmenu', e => e.preventDefault());
+
+$('typed').onsubmit = e => {
+  e.preventDefault(); unlock();
+  const t = $('text').value.trim(); if (t && !busy) { $('text').value = ''; send('/text', t, 'text/plain'); }
+};
+$('stop').onclick = () => dict ? pauseFree() : hush();
+$('new').onclick = async () => {
+  if (busy || dict) return;
+  const a = $('agent').value;
+  if (!confirm('Start a new voice conversation with ' + names[a] + '? The conversation so far goes to ' + names[a] + '’s chat first.')) return;
+  await toChat();
+  await fetch('/new?agent=' + a, { method: 'POST' });
+  $('log').innerHTML = ''; status('New conversation. ' + $('status').textContent);
+};
+
+fetch('/agents').then(r => r.json()).then(list => {
+  list.forEach(a => { names[a.id] = a.name; defaults[a.id] = a.voice; $('agent').add(new Option(a.name, a.id)); });
+  const last = store.get('agent'); if (last && names[last]) $('agent').value = last;
+  buildDock();
+  loadVoices();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+settings.json
+clips/
+kokoro/*.onnx
+kokoro/*.bin
+state.json
+*.log
+__pycache__/
